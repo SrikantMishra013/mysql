@@ -1,0 +1,66 @@
+1.
+The initial table structure has some normalization issues that can lead to data redundancy and integrity problems.Storing BorrowedMemberID in Books would lead to data redundancy: If multiple members borrow the same book over time, we would need to overwrite or add more columns in the Books table, causing redundant data.
+
+Books table will store details about each book without any borrowing-related fields.
+Attributes: BookID, Title, Author, Genre, PublishedYear, IsAvailable
+
+Members  table will store information about each library member.
+Attributes: MemberID, Name, Email, Phone
+
+BorrowRecords table will store records of each borrowing event, creating a many-to-many relationship between Books and Members by tracking each borrow event with BookID and MemberID.
+
+Attributes: RecordID, BookID, MemberID, BorrowDate, ReturnDate
+Foreign Keys: BookID (references Books(BookID)), MemberID (references Members(MemberID))
+
+By eliminating BorrowedMemberID from the Books table, we ensure that book details remain independent of borrowing events.
+
+2.
+CREATE INDEX idx_books_bookid ON Books (BookID);
+CREATE INDEX idx_borrowrecords ON BorrowRecords (BookID, MemberID);
+
+SELECT B.Title AS BookTitle, BR.BorrowDate AS DateBorrowed
+FROM Books B
+JOIN BorrowRecords BR 
+ON B.BookID = BR.BookID
+WHERE BR.MemberID = 123;
+
+3.
+
+SELECT M.Name AS MemberName, M.Email AS MemberEmail, B.Title AS BookTitle
+FROM Members M LEFT JOIN BorrowRecords BR 
+ON M.MemberID = BR.MemberID
+LEFT JOIN Books B 
+ON BR.BookID = B.BookID;
+
+LEFT JOIN ensures that every member appears in the result, even if they haven’t borrowed any books.
+For members who haven’t borrowed any books, BookTitle will be NULL, indicating no borrowed books for that member.
+
+4.
+>First, check if the requested book is available by querying the Books table for the IsAvailable status of the specified BookID.
+>Start a database transaction to ensure that all changes related to this borrowing action are atomic. This means that either all steps succeed, or none are applied.
+>Insert a new record into the BorrowRecords table with the BookID, MemberID, and the current date as the BorrowDate. The ReturnDate will be left as NULL, indicating the book is currently borrowed.
+>Update the IsAvailable status in the Books table to FALSE for the borrowed book. This step ensures that the book is marked as unavailable for other members until it’s returned.
+>Once all steps are successfully executed, commit the transaction to make all changes permanent in the database.
+
+BEGIN TRANSACTION;
+SELECT IsAvailable INTO @available FROM Books WHERE BookID = 101;
+INSERT INTO BorrowRecords (BookID, MemberID, BorrowDate) VALUES (4, 1, CURRENT_DATE);
+UPDATE Books SET IsAvailable = FALSE WHERE BookID = 101;
+COMMIT;
+
+5.
+Indexing Strategiesfor Books Table:
+i) Single-Column Indexes:
+CREATE INDEX idx_books_title ON Books (Title);
+CREATE INDEX idx_books_genre ON Books (Genre);
+These indexes will speed up queries that filter or sort results based on either the title or the genre individually.
+
+ii)Composite Index:
+CREATE INDEX idx_books_title_genre ON Books (Title, Genre);
+This index is particularly useful for queries that filter or sort by both title and genre together.
+
+Trade-offs:
+Improved Read Performance
+Increased Write Overhead
+Storage Overhead
+
